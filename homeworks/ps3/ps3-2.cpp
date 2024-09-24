@@ -7,7 +7,7 @@
 //
 #define USE_BUNDLED_SAMPLES
 #define ARC_STEPS 0
-#define BEZIER_STEPS 20
+#define BEZIER_STEPS 50
 
 
 #include "fssimplewindow.h"
@@ -22,7 +22,7 @@ using namespace std;
 
 #include "wireframe-samples.h"
 
-const string& SAMPLE = SAMPLE_PATH_SPARKLE_A;
+const string& SAMPLE = SAMPLE_PATH_DEAR;
 
 struct Point2i {
     int x;

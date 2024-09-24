@@ -6,7 +6,9 @@ SET(CMAKE_C_FLAGS_DEBUG "-D_DEBUG")
 
 # OGL setup
 find_package(OpenGL REQUIRED)
-find_library(OGL_LIBRARY OpenGL)
+#find_library(OGL_LIBRARY OpenGL)
+set(OGL_LIBRARY OpenGL::GL)
+
 # macOS support for Cocoa
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     enable_language(OBJC OBJCXX)
@@ -32,6 +34,8 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     file(GLOB FSSIMPLE_SOURCES ${FSSIMPLE_DIR}/*.cpp ${FSSIMPLE_DIR}/*.m)
 endif()
 
+include_directories(${PROJECT_SOURCE_DIR}/${FSSIMPLE_DIR})
+
 # demo targets (course material, close-source)
 add_subdirectory(demos)
 
@@ -41,4 +45,5 @@ add_executable(ps1 ps1/ps1-3.cpp)
 
 add_subdirectory(ps2)
 add_subdirectory(ps3)
+add_subdirectory(ps4)
 

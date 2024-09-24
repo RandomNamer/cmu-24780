@@ -1,6 +1,12 @@
 # build files
-*/cmake-build-debug
-*/cmake-build-release
+*cmake-build-debug/
+*cmake-build-release/
+CMakeCache.txt
+CMakeFiles
+out
+*cmake-build-debug-windows/
+.vs
+*cmake-build-xcode
 
 #Course sources by Soji
 fssimple
