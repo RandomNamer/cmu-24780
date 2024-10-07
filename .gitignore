@@ -37,6 +37,7 @@
 # IDE
 .idea/
 .vscode/
+.vs/
 
 # Submission
 *.zip

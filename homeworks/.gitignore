@@ -5,7 +5,7 @@ CMakeCache.txt
 CMakeFiles
 out
 *cmake-build-debug-windows/
-.vs
+.vs/
 *cmake-build-xcode
 
 #Course sources by Soji
@@ -16,3 +16,7 @@ demos
 *.pdf
 *.zip
 *.tar.gz
+*.jpg
+*.png
+*.mp4
+*.mov

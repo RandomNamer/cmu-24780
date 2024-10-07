@@ -4,12 +4,23 @@
 
 //#define RESTART_INSTEAD_OF_QUIT
 #define FPS 40
+//#define USE_VSYNC //If defined, the FPS should be set to vsync freq.
+
+
+#ifdef _WIN32
+#define M_PI 3.1415926
+#endif 
 
 #include <iostream>
 #include <utility>
+#include <algorithm>
+#include <array>
+#include <vector>
 #include "time.h"
 #include "fssimplewindow.h"
-#include "math.h"
+#include <cmath>
+#include <chrono>
+#include <cstdlib>
 using namespace std;
 
 //using Point2i = std::array<int, 2>;
@@ -131,12 +142,12 @@ public:
     float canvasScaleY;
     constexpr const static float worldWidth = 80.0f;
     constexpr const static float worldHeight = 60.0f;
-    CannonConfig cannon = {6, 10, 0.5};
+    CannonConfig cannon = {2, 5, 0.1};
     Point2f barrelEnd;
 
     CannonBallGame(float g = 9.8f, float velocity = 40.0f, int canvasWidth = 800, int canvasHeight = 600)
             : G(g), initialVelocity(velocity), canvasScaleX(static_cast<float>(canvasWidth) / worldWidth), canvasScaleY(static_cast<float>(canvasHeight) / worldHeight) {
-        cannonPos = {5.f, worldHeight - 10.f};
+        cannonPos = {3.f, worldHeight - 6.f};
         updateCannonAngle(45);
         isFiring = false;
         shotsFired = 0;
@@ -197,7 +208,7 @@ public:
                     removeCannonBall();
                 }
             }
-            if (cannonBallPos.x < 0 || cannonBallPos.x > worldWidth || cannonBallPos.y > worldHeight) {
+            if (cannonBallPos.x < 0 || cannonBallPos.x > worldWidth || cannonBallPos.y > worldHeight || cannonBallPos.y < 0) {
                 //missed
                 removeCannonBall();
             }
@@ -208,7 +219,7 @@ public:
             }
         }
         targetPos.y += targetVel * frameTime;
-        if (targetPos.y - 5.0f > worldHeight || targetPos.y < 5.0f) {
+        if (targetPos.y + 5.0f > worldHeight || targetPos.y < 5.0f) {
             //reverse direction
             targetVel = -targetVel;
         }
@@ -229,8 +240,8 @@ public:
 private:
 
     bool hit(RectF rect) {
-        auto [x1, x2, y1, y2] = rect.getBounds();
-        return cannonBallPos.x > x1 && cannonBallPos.x < x2  && cannonBallPos.y > y1 && cannonBallPos.y < y2;
+        auto b = rect.getBounds();
+        return cannonBallPos.x > b[0] && cannonBallPos.x < b[1] && cannonBallPos.y > b[2] && cannonBallPos.y < b[3];
     }
 
     void removeCannonBall() {
@@ -253,8 +264,13 @@ private:
     }
 
     void drawCannon(Point2f pos, int degree=0) {
-        auto [x, y] = pos;
-        auto [shieldSize, barrelLength, calibre] = cannon;
+        // auto [x, y] = pos;
+        float x = pos.x;
+        float y = pos.y;
+        // auto [shieldSize, barrelLength, calibre] = cannon;
+        float shieldSize = cannon.shieldSize;
+        float barrelLength = cannon.barrelLength;
+        float calibre = cannon.calibre;
         //Black barrel, rotatable
 //        drawRectFilled(worldToCanvas({x - calibre, y - calibre}), worldToCanvas({x + barrelEndX + calibre, y + barrelEndY + calibre}), {0, 0, 0});
         glLineWidth(calibre * canvasScaleX);
@@ -299,12 +315,13 @@ private:
     }
 
     RectF getCurrentTargetRect() {
-        return {{targetPos.x - 5.0f, targetPos.y - 5.0f}, {targetPos.x + 5.0f, targetPos.y + 5.0f}};
+        return RectF{Point2f{targetPos.x - 5.0f, targetPos.y - 5.0f}, Point2f{targetPos.x + 5.0f, targetPos.y + 5.0f}};
     }
 
     void drawTarget() {
-        auto [lt, rb] = getCurrentTargetRect();
-        drawRectFilled(worldToCanvas(lt), worldToCanvas(rb), {255, 0, 0});
+        auto targetRect = getCurrentTargetRect();
+        drawRectFilled(worldToCanvas(targetRect.topLeft), worldToCanvas(targetRect.bottomRight), {255, 0, 0});
+        // drawRectFilled(worldToCanvas(lt), worldToCanvas(rb), {255, 0, 0});
     }
 
 };
@@ -315,24 +332,31 @@ int main() {
     glEnable(GL_LINE_SMOOTH);
     glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
     FsPollDevice();
-    int frameTimeMs = 1000 / FPS;
+    int targetFrameTimeMs = 1000 / FPS;
+    int lastFrameTimeMs = 0;
     for(;;) {
         FsPollDevice();
         int key = FsInkey();
-        cout<<key<<endl;
+        // cout<<key<<endl;
         if (key == FSKEY_1) {
             game = CannonBallGame();
         } else if (key == FSKEY_ESC) {
             break;
         }
-        if (game.doFrame(key, frameTimeMs)) {
+        auto start = chrono::high_resolution_clock::now();
+        bool gameEnded = game.doFrame(key, targetFrameTimeMs);
+        lastFrameTimeMs = round(chrono::duration_cast<chrono::microseconds>(chrono::high_resolution_clock::now() - start).count() / 1000.f);
+        cout << "Game do frame with input " << key << ", frameTime: " << lastFrameTimeMs << "ms."<<endl;
+        if (gameEnded) {
 #ifdef RESTART_INSTEAD_OF_QUIT
             game = CannonBallGame();
 #else
             break;
 #endif
         }
-        FsSleep(frameTimeMs);
+#ifndef USE_VSYNC
+        FsSleep(std::max(1, targetFrameTimeMs - lastFrameTimeMs - 1));
+#endif
     }
 
 }
