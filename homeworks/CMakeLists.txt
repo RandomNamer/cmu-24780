@@ -52,14 +52,44 @@ endif()
 set(BITMAP_FONT_HEADER ${PROJECT_SOURCE_DIR}/fssimple/ysglfontdata.h)
 set(BITMAP_FONT_SOURCES ${PROJECT_SOURCE_DIR}/fssimple/ysglfontdata.c)
 
+file(GLOB YSPNG ${PROJECT_SOURCE_DIR}/fssimple/yspng/*)
+
 message(STATUS "FSSIMPLE_DIR_PLATFORM_SPECIFIC: ${FSSIMPLE_DIR_PLATFORM_SPECIFIC}")
 message(STATUS "FSSIMPLE_HEADER: ${FSSIMPLE_HEADER}")
 message(STATUS "FSSIMPLE_SOURCES: ${FSSIMPLE_SOURCES}")
 message(STATUS "SIMPLESOUND_HEADER: ${SIMPLESOUND_HEADER}")
 message(STATUS "SIMPLESOUND_SOURCES: ${SIMPLESOUND_SOURCES}")
+message(STATUS "YSPNG SOURCE+HEADER: " ${YSPNG})
 
 include_directories(${FSSIMPLE_DIR_PLATFORM_SPECIFIC})
 include_directories(${PROJECT_SOURCE_DIR}/fssimple)
+include_directories(${PROJECT_SOURCE_DIR}/fssimple/yspng)
+
+
+#util functions
+function(copy_resources target_name)
+    file(GLOB RESOURCES res/*)
+    list(FILTER RESOURCES EXCLUDE REGEX "original|DS_Store")
+    message(STATUS "${target_name} > calling copy resources for: ${RESOURCES}")
+    get_target_property(IS_OSX_BUNDLE ${target_name} MACOSX_BUNDLE)
+    if(APPLE AND IS_OSX_BUNDLE)
+        message(STATUS "${target_name} is a macOS bundle")
+        set(DESTINATION_DIR "$<TARGET_BUNDLE_CONTENT_DIR:${target_name}>/MacOS")
+    else()
+        set(DESTINATION_DIR "$<TARGET_FILE_DIR:${target_name}>")
+    endif()
+
+    # Copy each resource file to the target's output directory
+    foreach(RES ${RESOURCES})
+        add_custom_command(
+                TARGET ${target_name}
+                POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy
+                ${RES}
+                ${DESTINATION_DIR}
+        )
+    endforeach()
+endfunction()
 
 # demo targets (course material, close-source)
 add_subdirectory(demos)
@@ -73,4 +103,8 @@ add_subdirectory(ps3)
 add_subdirectory(ps4)
 add_subdirectory(ps5)
 add_subdirectory(ps6)
+add_subdirectory(ps7)
+#add_subdirectory(indiedemo)
+add_subdirectory(ps8)
+add_subdirectory(ps9)
 

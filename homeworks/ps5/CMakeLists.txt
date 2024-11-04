@@ -1,2 +1,7 @@
 add_executable(ps5 MACOSX_BUNDLE ps5.cpp ${FSSIMPLE_SOURCES} ${SIMPLESOUND_SOURCES} ${BITMAP_FONT_SOURCES})
 target_link_libraries(ps5 ${COCOA_LIBRARY} ${OGL_LIBRARY} ${AVFOUNDATION_FRAMEWORK})
+
+add_executable(ps5-demo MACOSX_BUNDLE ps5-demo.cpp ${FSSIMPLE_SOURCES} ${SIMPLESOUND_SOURCES} ${BITMAP_FONT_SOURCES})
+target_link_libraries(ps5-demo ${COCOA_LIBRARY} ${OGL_LIBRARY} ${AVFOUNDATION_FRAMEWORK})
+
+copy_resources(ps5-demo)

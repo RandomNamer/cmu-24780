@@ -7,7 +7,7 @@
 #include "ysglfontdata.h"
 #include <cmath>
 #include "stdlib.h"
-
+#include "stdio.h"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -15,7 +15,7 @@
 #include <queue>
 #include <array>
 #include <algorithm>
-
+#include <exception>
 
 
 using namespace std;
@@ -25,6 +25,51 @@ const auto RES_DIR = R"(W:\Sync\Courses\24 Fall\24780\cmu-24780\homeworks\ps5\re
 #ifdef _WIN32
 #define M_PI 3.1415926
 #endif
+
+#define SEED 114514
+
+enum DemoOpts {
+    RECORD,
+    REPLAY,
+    AIMBOT,
+    PLAYABLE
+};
+
+const DemoOpts FLAVOR = AIMBOT;
+
+vector<std::string> split(string s, string delimiter) {
+    size_t pos_start = 0, pos_end, delim_len = delimiter.length();
+    string token;
+    vector<std::string> res;
+
+    while ((pos_end = s.find(delimiter, pos_start)) != std::string::npos) {
+        token = s.substr (pos_start, pos_end - pos_start);
+        pos_start = pos_end + delim_len;
+        res.push_back (token);
+    }
+
+    res.push_back (s.substr (pos_start));
+    return res;
+}
+
+void takeInputsSplitBySpace(double& a, double& b, double& c, double& d, double& e, double& f, double &g, double &h) {
+    string inputLine;
+    cin>>inputLine;
+    vector<string> tokens = split(inputLine, " ");
+    cout<<tokens.size();
+    if (tokens.size() >= 7) {
+        a = stod(tokens[0]);
+        b = stod(tokens[1]);
+        c = stod(tokens[2]);
+        d = stod(tokens[3]);
+        e = stod(tokens[4]);
+        f = stod(tokens[5]);
+        g = stod(tokens[6]);
+        h = stod(tokens[7]);
+    } else {
+        cout<<"Not enough numbers\n";
+    }
+}
 
 struct MouseEvent {
     int lb;
@@ -203,12 +248,20 @@ const WeaponConfig M249 = WeaponConfig {
 
 };
 
-const vector<WeaponConfig> weaponList = {AK, M200, M249};
+const vector<WeaponConfig> allWeaponList = {AK, M200, M249};
+
+class GameInputHook {
+public:
+    virtual void updateWithStateRef(MouseEvent& fedMouseEv, int& kev, int& frameTime) = 0;
+};
+
+class AimBot;
 
 //Snipe against multiple targets
 //TODO: hip fire spread; wasd move; bullet drop; more sound fx; more resolution support
 class CodParodyGame {
 public:
+    friend class AimBot;
 
     struct Target {
         float distance;
@@ -276,7 +329,7 @@ public:
     int adsChangeStartTime = 0;
     int gunkickStartTime = 0;
     float mouseSensitivity = 1;
-
+    std::vector<WeaponConfig> weaponList;
 
     //For all usages that are rare
     const GameConfig rawConfig;
@@ -289,17 +342,17 @@ public:
 
 
     CodParodyGame(GameConfig config): rawConfig(config), mouseSensitivity(config.mouseSensitivity) {
-        srand(time(nullptr));
+        this->weaponList = config.weapons;
         spawnTargets(config.targetCount, config.targetDistanceMax, config.targetSpeedMin, config.targetSpeedMax);
         setWeapon(0);
         FsChangeToProgramDir();
-        if (YSOK != hitmarkerSound.LoadWav(("hitmarker.wav").c_str())) {
+        if (YSOK != hitmarkerSound.LoadWav("hitmarker.wav")) {
             cout << "Failed to load hitmarker sound" << endl;
         }
-        if (YSOK != finishingSound1.LoadWav(("finisher_01.wav").c_str())) {
+        if (YSOK != finishingSound1.LoadWav("finisher_01.wav")) {
             cout << "Failed to load finishing sound 1" << endl;
         }
-        if (YSOK != finishingSound2.LoadWav(("finisher_02.wav").c_str())) {
+        if (YSOK != finishingSound2.LoadWav("finisher_02.wav")) {
             cout << "Failed to load finishing sound 2" << endl;
         }
         player.Start();
@@ -436,7 +489,7 @@ private:
         }
 
         drawUI();
-        FsSwapBuffers();
+
     }
 
     void updateFov() {
@@ -623,7 +676,7 @@ private:
         for (int i = 0; i < count; ++i) {
             float distance = static_cast<float>(rand() % maxDistance + 1);
             int x = rand() % (2400 - 400) + 200; // Ensure at least 200 units from the edges
-            int y = rand() % (1800 - 400) + 200; // Ensure at least 200 units from the edges
+            int y = rand() % (1800 - 600) + 300; // Ensure at least 300 units from the edges
             float moveSpeed = static_cast<float>(rand()) / RAND_MAX * (maxSpeed - minSpeed) + minSpeed;
             if (staticTarget) moveSpeed = 0;
             targets.push_back({distance, x, y, moveSpeed});
@@ -762,30 +815,291 @@ private:
     }
 };
 
-int main() {
-    FsOpenWindow(16,16,800,600,1);
-    auto gameConfig = GameConfig {
-        weaponList,
-        50,
-        5,
-        60,
-        200,
-        3.f,
-        3.7f,
-        true
+class AimBot : public GameInputHook {
+public:
+    struct AimbotConfig {
+        std::string name = "default";
+        float aimSpeed = 50.f;
+        float headshotProb = 1.f;   // 1 for head, 0 for torso
+        float adsDistance = 100.f;  // Distance to start aiming down sight
     };
-    CodParodyGame game(gameConfig);
+
+    AimBot(CodParodyGame &game, const AimbotConfig &config)
+            : game(game), config(config) {
+        cout<<"Aimbot created with config "<<config.name<<endl;
+    }
+
+    void drawAimbotStateInFrame() {
+        glColor3ub(0, 0, 0);
+        glRasterPos2i(300, 40);
+        YsGlDrawFontBitmap16x24(config.name.c_str());
+    }
+
+    void updateWithStateRef(MouseEvent &fedMouseEv, int &kev, int &frameTime) override {
+        fedMouseEv.mx = 0;
+        fedMouseEv.my = 0;
+        fedMouseEv.lb = 0;
+        fedMouseEv.rb = 0;
+        kev = 0;
+        parseState();
+        if (currentTargetIndex == -1 || !isTargetEligible(game.targets[currentTargetIndex])) {
+            selectNewTarget();
+        }
+        if (currentTargetIndex != -1) {
+            computeAndInjectAimbotInput(fedMouseEv, kev, frameTime);
+        }
+    }
+
+private:
+    CodParodyGame &game;
+    AimbotConfig config;
+    int currentTargetIndex = -1;  // Index of the currently targeted enemy
+    bool isTargetInAdsRange = false;
+    bool aimForHead = false;         // Decides whether to aim at head or torso for the current target
+
+    void parseState() {
+        // Parse initial game states if needed, but leave decisions like weapon switching to determineOperation
+    }
+
+    bool isTargetEligible(const CodParodyGame::Target& target) {
+        bool isDead = target.health <= 0;
+        bool isViewPortReachable;
+        //2400*1800 canvas, reachable in 1x fov
+        isViewPortReachable = target.x > 400 && target.x < 2000 && target.y > 300 && target.y < 1500;
+        if (!isViewPortReachable) std::cout<<"Target "<<currentTargetIndex<<" is not reachable: "<<target.x<<" "<<target.y<<" "<<target.moveSpeed<<endl;
+        return !isDead && isViewPortReachable;
+    }
+
+    void selectNewTarget() {
+        // Decide if aiming for head or torso based on `headshotProb`
+        aimForHead = (static_cast<float>(rand()) / RAND_MAX) > config.headshotProb;
+
+        // Find the closest target with health > 0
+        int closestIndex = -1;
+        float closestDistance = 1145141919810.f;
+        for (size_t i = 0; i < game.targets.size(); ++i) {
+            auto &target = game.targets[i];
+            if (isTargetEligible(target)) {
+                float distance = calculateDistanceToTarget(target);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestIndex = i;
+                }
+            }
+        }
+        currentTargetIndex = closestIndex;
+        if (currentTargetIndex != -1) {
+            isTargetInAdsRange = closestDistance <= config.adsDistance;
+        }
+        std::cout<<"Selected target "<<currentTargetIndex<<"Distance: "<<closestDistance<<endl;
+    }
+
+    void computeAndInjectAimbotInput(MouseEvent &fedMouseEv, int &kev, int &frameTime) {
+        auto &target = game.targets[currentTargetIndex];
+        float distance = calculateDistanceToTarget(target);
+
+        // Determine ADS status based on target distance
+        if (distance <= config.adsDistance) {
+            fedMouseEv.rb = 1;
+        } else {
+            fedMouseEv.rb = 0;  // Exit ADS if target is too far
+        }
+
+        // Calculate aiming adjustments
+        Point2i aimAdjustment = calculateAimAdjustment(target, frameTime);
+        fedMouseEv.mx = aimAdjustment.x;
+        fedMouseEv.my = aimAdjustment.y;
+
+        // Check if weapon needs reloading or switching
+        if (game.remainingBullets <= 1) {
+            kev = FSKEY_1;  // Switch weapon when ammo is low
+        } else if (isCrosshairOnTarget(target)) {
+            if (game.remainingBullets > 0 && !game.isFiring) {
+                fedMouseEv.lb = 1;  // Fire
+            } else if (game.remainingBullets == 0) {
+                kev = FSKEY_R;  // Reload when out of bullets
+            }
+        }
+        cout<<"Aimbot injected input"<<"distance "<<distance<<" Key: "<<kev<<" Mouse: "<<fedMouseEv.mx<<" "<<fedMouseEv.my<<" "<<fedMouseEv.lb<<" "<<fedMouseEv.rb<<endl;
+    }
+
+    float calculateDistanceToTarget(const CodParodyGame::Target &target) const {
+        return sqrt(pow(target.x - game.currentCenterX, 2) +
+                    pow(target.y - game.currentCenterY, 2));
+    }
+
+    Point2i calculateAimAdjustment(const CodParodyGame::Target &target, int frameTime) {
+        // head size is always 100 in world space
+        float r = 100.f / target.distance * game.currentFovFactor;
+
+        // Compute the center of the torso or head hitbox based on `aimForHead`
+        auto viewportX = (target.x - game.currentCenterX) * game.currentFovFactor + 400;
+        auto viewportY = (target.y - game.currentCenterY) * game.currentFovFactor + 300;
+
+        Point2i targetCenter;
+        if (aimForHead) {
+            // Head hitbox center
+            targetCenter = {static_cast<int>(viewportX),
+                            static_cast<int>(viewportY)};
+        } else {
+            // Torso hitbox center
+            targetCenter = {static_cast<int>(viewportX),
+                            static_cast<int>(viewportY - r - r / 2)};
+        }
+
+        // movement on screen space
+        float dx = targetCenter.x - 400;
+        float dy = targetCenter.y - 300;
+
+        // Adjust for mouse sensitivity and FOV scaling
+        dx *=  game.currentFovFactor / game.mouseSensitivity;
+        dy *=  game.currentFovFactor / game.mouseSensitivity;
+
+        // Calculate aim speed per frame, considering viewport scaling and sensitivity
+        float distance = sqrt(dx * dx + dy * dy);
+        float aimSpeed = config.aimSpeed;
+
+        // Return the final aim adjustment
+        if (distance < aimSpeed) {
+            return {static_cast<int>(dx), static_cast<int>(dy)};
+        } else {
+            return {static_cast<int>(dx * aimSpeed / distance),
+                    static_cast<int>(dy * aimSpeed / distance)};
+        }
+    }
+
+    bool isCrosshairOnTarget(const CodParodyGame::Target &target) {
+        // Use CodParodyGame's hit detection function to check for a hit
+        CodParodyGame::HitType hitType = game.getHitType(target);
+        return hitType == CodParodyGame::TORSO || hitType == CodParodyGame::HEADSHOT;
+    }
+};
+
+class GameReplayHelper: public GameInputHook {
+public:
+    GameReplayHelper(const string& fn, bool recordMode = false): filename(fn), isInRecordMode(recordMode) {
+        FsChangeToProgramDir();
+        if (recordMode) {
+            file = fopen(filename.c_str(), "w");
+            fclose(file);
+            file = fopen(filename.c_str(), "a");
+        } else {
+            file = fopen(filename.c_str(), "r");
+        }
+        if (file == NULL) {
+            perror("Error opening file");
+            throw std::runtime_error("Error opening file");
+        }
+    }
+
+    ~GameReplayHelper() {
+        fclose(file);
+    }
+
+    void updateWithStateRef(MouseEvent& fedMouseEv, int& kev, int& frameTime) override {
+        if (isInRecordMode) {
+            fprintf(file, "%d %d %d %d %d %d %d %d\n", fedMouseEv.lb, fedMouseEv.mb, fedMouseEv.rb, fedMouseEv.mx, fedMouseEv.my, fedMouseEv.eventType, kev, frameTime);
+        } else {
+            memset(lineBuffer, 0, sizeof(lineBuffer));
+            auto ret = fgets(lineBuffer, sizeof(lineBuffer), file);
+            if (ret == NULL) {
+                std::cout<<"End of file\n";
+            }
+            int lb, mb, rb, mx, my, eventType;
+            sscanf(lineBuffer, "%d %d %d %d %d %d %d %d", &lb, &mb, &rb, &mx, &my, &eventType, &kev, &frameTime);
+            std::cout<<"Resolved state:"<<lb<<" "<<mb<<" "<<rb<<" "<<mx<<" "<<my<<" "<<eventType<<" "<<kev<<" "<<frameTime<<std::endl;
+            fedMouseEv = MouseEvent {lb, mb, rb, mx, my, eventType};
+        }
+    }
+
+
+private:
+    FILE* file;
+    const std::string filename;
+    char lineBuffer[256];
+    bool isInRecordMode;
+};
+
+void aimbotDemoSplashScreen(const AimBot::AimbotConfig& config) {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // Title
+    glColor3ub(0, 0, 0);
+    glRasterPos2i(250, 150);
+    YsGlDrawFontBitmap20x28("Aimbot Configuration");
+
+    // Aim Speed
+    glRasterPos2i(200, 250);
+    YsGlDrawFontBitmap16x24(("Aim Speed: " + std::to_string(config.aimSpeed)).c_str());
+
+    // Headshot Probability
+    glRasterPos2i(200, 300);
+    YsGlDrawFontBitmap16x24(("Headshot Probability: " + std::to_string(config.headshotProb)).c_str());
+
+    // ADS Distance
+    glRasterPos2i(200, 350);
+    YsGlDrawFontBitmap16x24(("ADS Distance: " + std::to_string(config.adsDistance)).c_str());
+
+    FsSwapBuffers();
+    FsSleep(2000);
+}
+
+
+int main() {
+    srand(FLAVOR == REPLAY || FLAVOR == RECORD ? SEED : SEED);
+
+    FsOpenWindow(16,16,800,600,1);
     glEnable(GL_LINE_SMOOTH);
     glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     FsPollDevice();
     FsPassedTime();
+
+    GameConfig gameConfig = {
+        allWeaponList,
+        15,
+        5,
+        80,
+        150,
+        1.f,
+        2.9f,
+        true
+    };
+
+    GameConfig gameConfigForSlowAimbot = {
+    	{AK, M249},
+    		15,
+    		5,
+    		60,
+    		80,
+    		1.f,
+    		2.9f,
+    		true
+    	};
+
+    std::unique_ptr<CodParodyGame> game = std::make_unique<CodParodyGame>(gameConfig);
+
     MouseEvent mouseState = {0, 0, 0, 0, 0, 0};
     FsGetMouseEvent(mouseState.lb, mouseState.mb, mouseState.rb, mouseState.mx, mouseState.my);
 
     //For render time calc
     constexpr auto clk = chrono::high_resolution_clock();
+
+    // replay
+    GameReplayHelper replayHelper("player_events.txt", FLAVOR == RECORD);
+    //aimbot
+    const AimBot::AimbotConfig aimbotConfigs[] = {
+        {"all_headshot", 30.f, 1.f, 200.f},
+        {"all _torso", 30.f, 0.f, 200.f},
+        {"mixed", 30.f, 0.5f, 200.f},
+        {"slow", 15.f, 0.5f, 200.f}
+    };
+    int currentAimbotConfig = 0;
+    auto aimbot = std::make_unique<AimBot>(*game, aimbotConfigs[currentAimbotConfig]);
+    if (FLAVOR == AIMBOT) {
+        aimbotDemoSplashScreen(aimbotConfigs[0]);
+    }
 
     for (;;) {
         FsPollDevice();
@@ -798,16 +1112,35 @@ int main() {
 
         auto start = clk.now();
 
-        bool gameEnded = game.doFrame(MouseEvent {
+        int frameTime = FsPassedTime();
+        auto fedMouseEv = MouseEvent {
                 newState.lb, newState.mb, newState.rb, newState.mx - mouseState.mx, newState.my - mouseState.my, 0
-            }, key, FsPassedTime());
+        };
+
+        if (FLAVOR == REPLAY || FLAVOR == RECORD) {
+            replayHelper.updateWithStateRef(fedMouseEv, key, frameTime);
+        } else if (FLAVOR == AIMBOT) {
+            aimbot->updateWithStateRef(fedMouseEv, key, frameTime);
+        }
+
+        bool gameEnded = game->doFrame(fedMouseEv, key, frameTime);
+        aimbot->drawAimbotStateInFrame();
+
+        FsSwapBuffers();
         mouseState = newState;
 
         auto renderTimeUs = chrono::duration_cast<chrono::microseconds>(clk.now() - start).count();
 //        cout << "Render time: " << renderTimeUs << "us" << endl;
 
         if (gameEnded) {
-            break;
+            if (FLAVOR == AIMBOT) {
+                currentAimbotConfig++;
+                game = std::make_unique<CodParodyGame>(currentAimbotConfig == 3? gameConfigForSlowAimbot : gameConfig);
+                if (currentAimbotConfig > 3) break;
+                aimbot = std::make_unique<AimBot>(*game, aimbotConfigs[currentAimbotConfig]);
+                aimbotDemoSplashScreen(aimbotConfigs[currentAimbotConfig]);
+            } else break;
         }
+        FsSleep(25);
     }
 }

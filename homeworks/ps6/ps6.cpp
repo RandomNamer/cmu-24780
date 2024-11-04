@@ -2,7 +2,7 @@
 #include <math.h>
 #include "fssimplewindow.h"
 
-#define DRAW_TEST
+//#define DRAW_TEST
 
 const double tolerance=1e-6;
 
@@ -72,8 +72,8 @@ public:
     Axes(int d): density(d) {}
 
     void Draw() const {
-        drawAxes();
         drawGrid(density);
+        drawAxes();
     }
 private:
     void drawAxes() const {
@@ -124,18 +124,22 @@ int main(void) {
 #endif
     Axes axes(30);
     FsOpenWindow(0, 0, canvasH, canvasW, 1);
+
+//    glEnable(GL_LINE_SMOOTH);
+//    glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    //gl y coord is the opposite of the canvas y coord
+    glScalef(canvasW / 2.f, -canvasH / 2.f, 1.f);
+    glTranslatef(1.f, -1.f, 0.f);
+
     for (;;) {
         FsPollDevice();
         if (FSKEY_ESC == FsInkey()) {
             break;
         }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        //gl y coord is the opposite of the canvas y coord
-        glScalef(canvasW / 2.f, -canvasH / 2.f, 1.f);
-        glTranslatef(1.f, -1.f, 0.f);
-
         axes.Draw();
         eqn.Plot();
         FsSwapBuffers();
